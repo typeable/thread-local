@@ -1,0 +1,35 @@
+cabal-version:      3.0
+name:               thread-local
+version:            0.1
+synopsis:           Thread local storage 
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             Nick
+maintainer:         nick@typeable.io
+-- copyright:
+category:           Control
+build-type:         Simple
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:  Control.Concurrent.ThreadLocal
+                      Control.Concurrent.ThreadLocal.Unsafe
+    other-modules:    Control.Concurrent.ThreadLocal.Internal
+    build-depends:    base >=4.16 && < 5,
+                      containers >= 0.6
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+executable example
+    import:           warnings
+    Main-Is:          Main.hs
+    build-depends:    base >= 4.16 && < 5,
+                      thread-local,
+                      random
+    hs-source-dirs:   example
+    default-language: Haskell2010
