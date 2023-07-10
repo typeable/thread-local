@@ -21,7 +21,8 @@ library
                       Control.Concurrent.ThreadLocal.Unsafe
     other-modules:    Control.Concurrent.ThreadLocal.Internal
     build-depends:    base >=4.16 && < 5,
-                      containers >= 0.6
+                      vector >= 0.13,
+                      witherable
     hs-source-dirs:   src
     default-language: Haskell2010
 
@@ -29,6 +30,7 @@ executable example
     import:           warnings
     Main-Is:          Main.hs
     build-depends:    base >= 4.16 && < 5,
+                      async,
                       thread-local,
                       random
     hs-source-dirs:   example

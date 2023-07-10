@@ -1,58 +1,62 @@
+{-# LANGUAGE TupleSections #-}
 module Control.Concurrent.ThreadLocal.Internal where
 
-import Control.Concurrent (ThreadId, myThreadId)
-import Data.IORef
-import Data.Map (Map)
-import qualified Data.Map.Strict as Map
-import System.Mem.StableName
+import Control.Concurrent (ThreadId, myThreadId, mkWeakThreadId)
+import Control.Concurrent.MVar
+import Control.Monad ((<=<), guard)
+import Data.Foldable (toList)
+import Data.Maybe (isJust)
+import Data.Vector (Vector)
+import qualified Data.Vector as Vector
+import Data.Witherable
 import System.Mem.Weak
 
-type ThreadName = StableName ThreadId
+data LocalValue a = LocalValue {-# UNPACK #-} !(Weak ThreadId)  -- ^ ThreadId reference used as a key
+                                              String            -- ^ String representation of ThreadId, for debugging
+                                              a
 
-data LocalVal a = LocalVal !(Weak ThreadId) !a
+localThread :: LocalValue a -> IO (Maybe ThreadId)
+localThread (LocalValue weak _ _) = deRefWeak weak
 
-isSameThread :: ThreadId -> Weak ThreadId -> IO Bool
-isSameThread tid wid = do mtid' <- deRefWeak wid
-                          return $ case mtid' of
-                            Nothing -> False
-                            Just tid' -> tid == tid'
+derefLocal :: LocalValue a -> IO (Maybe (ThreadId, a))
+derefLocal (LocalValue weak _ a) = fmap (,a) <$> deRefWeak weak
 
-newtype ThreadLocal a = ThreadLocal { values :: IORef (Map ThreadName (LocalVal a))
+makeLocal :: ThreadId -> a -> IO (LocalValue a)
+makeLocal tid a = do weak <- mkWeakThreadId tid
+                     pure (LocalValue weak (show tid) a)
+
+newtype ThreadLocal a = ThreadLocal { values :: MVar (Vector (LocalValue a))
                                     }
 
 -- | Create a new thread local storage of type 'a'
 newThreadLocal :: IO (ThreadLocal a)
-newThreadLocal = do ref <- newIORef Map.empty
-                    return (ThreadLocal ref)
+newThreadLocal = do var <- newMVar Vector.empty
+                    return (ThreadLocal var)
 
 -- | Insert a value for the current thread
 insertThreadLocal :: a -> ThreadLocal a -> IO ()
-insertThreadLocal v (ThreadLocal ref) = do tid <- myThreadId
-                                           name <- makeStableName tid
-                                           wid <- mkWeakPtr tid Nothing
-                                           atomicModifyIORef' ref $ \m ->
-                                             let m' = Map.insert name (LocalVal wid v) m
-                                             in  (m',())
+insertThreadLocal val (ThreadLocal var) = do tid <- myThreadId
+                                             loc <- makeLocal tid val
+                                             modifyMVar_ var $ \v ->
+                                               do ts <- filterA (\l -> do tid' <- localThread l
+                                                                          pure (isJust tid' && Just tid /= tid')
+                                                                ) (toList v)
+                                                  pure (Vector.fromList (loc:ts))
 
 -- | Fetch a value for the current thread. If none was inserted previously, return Nothing.
 fetchThreadLocal :: ThreadLocal a -> IO (Maybe a)
-fetchThreadLocal (ThreadLocal ref) = do tid <- myThreadId
-                                        name <- makeStableName tid
-                                        m <- readIORef ref
-                                        case Map.lookup name m of
-                                          Just (LocalVal wid v) ->
-                                            do st <- isSameThread tid wid
-                                               if st
-                                                 then return (Just v)
-                                                 -- Account for the fact that a string representation of
-                                                 -- a ThreadId can result in a collision.
-                                                 -- If one occurs, remove the old data.
-                                                 else Nothing <$ removeThreadLocal (ThreadLocal ref)
-                                          Nothing -> return Nothing
+fetchThreadLocal (ThreadLocal var) = do tid <- myThreadId
+                                        v <- readMVar var
+                                        f tid <$> wither derefLocal v
+  where f tid vec = do ((tid',v),_) <- Vector.uncons vec
+                       guard (tid == tid')
+                       pure v
 
--- | Remove the currently held value for the current thread.
-removeThreadLocal :: ThreadLocal a -> IO ()
-removeThreadLocal (ThreadLocal ref) = do tid <- myThreadId
-                                         name <- makeStableName tid
-                                         atomicModifyIORef' ref $ \m ->
-                                           (Map.delete name m, ())
+gcThreadLocal :: ThreadLocal a -> IO ()
+gcThreadLocal (ThreadLocal var) = modifyMVar_ var (filterA (fmap isJust . localThread))
+
+dumpThreadLocal :: ThreadLocal a -> IO [(Maybe ThreadId, String, a)]
+dumpThreadLocal (ThreadLocal var) = traverse (\l@(LocalValue _ s v) -> (,s,v) <$> localThread l) . toList =<< readMVar var
+
+printThreadLocal :: Show a => ThreadLocal a -> IO ()
+printThreadLocal = print <=< dumpThreadLocal

@@ -2,7 +2,9 @@ module Control.Concurrent.ThreadLocal ( ThreadLocal -- exported opaque
                                       , newThreadLocal
                                       , insertThreadLocal
                                       , fetchThreadLocal
-                                      , removeThreadLocal
+                                      , gcThreadLocal
+                                      , dumpThreadLocal
+                                      , printThreadLocal
                                       ) where
 
 import Control.Concurrent.ThreadLocal.Internal
