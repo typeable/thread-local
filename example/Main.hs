@@ -9,9 +9,9 @@ import Control.Monad
 import System.Random
 
 main :: IO ()
-main = do tls <- newThreadLocal
-          replicateConcurrently_ 200 (f tls)
-          printThreadLocal tls
+main = do tls <- newThreadLocalWithGC 30
+          replicateConcurrently_ 200000 (f tls)
+--          printThreadLocal tls
 
 f :: ThreadLocal Word -> IO ()
 f tls = do v :: Word <- randomIO
@@ -19,4 +19,4 @@ f tls = do v :: Word <- randomIO
            insertThreadLocal v tls
            !v' <- fetchThreadLocal tls
            unless (Just v == v') $
-             putStrLn ("Ooops! " <> show tid <> " expected " <> show v <> " while the fetched value is " <> show v')
+             putStrLn ("Ooops! " <>  show tid <>  " expected " <>  show v <>  " while the fetched value is " <>  show v')
