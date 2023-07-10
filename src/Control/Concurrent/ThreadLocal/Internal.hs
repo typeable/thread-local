@@ -4,7 +4,7 @@ module Control.Concurrent.ThreadLocal.Internal where
 import Control.Concurrent (ThreadId, myThreadId, mkWeakThreadId)
 import Control.Concurrent.MVar
 import Control.Monad ((<=<), guard)
-import Data.Foldable (toList)
+import Data.Foldable (find, toList)
 import Data.Maybe (isJust)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
@@ -48,8 +48,7 @@ fetchThreadLocal :: ThreadLocal a -> IO (Maybe a)
 fetchThreadLocal (ThreadLocal var) = do tid <- myThreadId
                                         v <- readMVar var
                                         f tid <$> wither derefLocal v
-  where f tid vec = do ((tid',v),_) <- Vector.uncons vec
-                       guard (tid == tid')
+  where f tid vec = do (_,v) <- find ((== tid) . fst) vec
                        pure v
 
 gcThreadLocal :: ThreadLocal a -> IO ()
