@@ -11,7 +11,6 @@ import System.Random
 main :: IO ()
 main = do tls <- newThreadLocalWithGC 30
           replicateConcurrently_ 200000 (f tls)
---          printThreadLocal tls
 
 f :: ThreadLocal Word -> IO ()
 f tls = do v :: Word <- randomIO

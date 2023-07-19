@@ -13,6 +13,10 @@ data ThreadLocal a = ThreadLocal { mvar :: MVar (ThreadMap a)
                                  }
 
 -- | Create a new thread local storage of type 'a'
+--   Note that TLS created by this function will accumulate dead threads
+--   and thus leak memory during its lifetime. This is mostly fine for shorter-living
+--   instances. If you plan on having this 'ThreadLocal' live longer than a while,
+--   consider using 'newThreadLocalWithGC' instead.
 newThreadLocal :: IO (ThreadLocal a)
 newThreadLocal = do var <- newMVar Map.empty
                     return (ThreadLocal var Nothing)
@@ -28,6 +32,7 @@ fetchThreadLocal (ThreadLocal var _) = do tid <- myThreadId
                                           m <- readMVar var
                                           return (Map.lookup tid m)
 
+-- | Delete a currently held value for this thread.
 deleteThreadLocal :: ThreadLocal a -> IO ()
 deleteThreadLocal (ThreadLocal var _) = do tid <- myThreadId
                                            modifyMVar_ var (pure . Map.delete tid)
